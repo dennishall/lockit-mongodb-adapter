@@ -34,15 +34,6 @@ var Adapter = module.exports = function(config) {
   MongoClient.connect(url, function(err, database) {
     if (err) {throw err; }
     that.db = database;
-    
-    // Create single key indexes for username and email adress so they're both unique and faster to find
-    // @see http://docs.mongodb.org/manual/core/index-single/
-    database.collection(that.collection).createIndex({name:1},{unique:true});
-    database.collection(that.collection).createIndex({email:1},{unique:true});
-    
-    // This would create a compound index
-    // @see http://docs.mongodb.org/manual/core/index-compound/
-    // database.collection(that.collection).createIndex({name:1, email:1},{unique:true});
   });
 
 };
@@ -74,7 +65,7 @@ var Adapter = module.exports = function(config) {
  * @param {String} pw - Plain text user password
  * @param {Function} done - Callback function `function(err, user){}`
  */
-Adapter.prototype.save = function(name, email, pw, done) {
+Adapter.prototype.save = function(req, done) {
   var that = this;
 
   var now = moment().toDate();
@@ -82,16 +73,25 @@ Adapter.prototype.save = function(name, email, pw, done) {
   var future = moment().add(timespan, 'ms').toDate();
 
   var user = {
-    name: name,
-    email: email,
+    email: req.body.email,
     signupToken: uuid.v4(),
     signupTimestamp: now,
     signupTokenExpires: future,
     failedLoginAttempts: 0
   };
 
+  // store additional fields from the request (as defined by the config)
+  that.config.signup.additionalFields.forEach(function(key){
+      user[key] = req.body[key];
+  });
+
+  // store default properties defined in the config
+  Object.keys(that.config.signup.defaultProperties).forEach(function(key){
+      user[key] = that.config.signup.defaultProperties[key];
+  });
+
   // create salt and hash
-  pwd.hash(pw, function(err, salt, hash) {
+  pwd.hash(req.body.password, function(err, salt, hash) {
     if (err) {return done(err); }
     user.salt = salt;
     user.derived_key = hash;
